@@ -7,18 +7,18 @@ using Refit;
 
 namespace AutoXduNCovReport.Repository
 {
-    class TCheckRepository
+    class ThreeCheckRepository
     {
-        private static readonly Lazy<TCheckRepository> Lazy = new(() => new TCheckRepository());
+        private static readonly Lazy<ThreeCheckRepository> Lazy = new(() => new ThreeCheckRepository());
         /// <summary>
         /// Get the singleton of the repository.
         /// </summary>
-        public static TCheckRepository Instance => Lazy.Value;
+        public static ThreeCheckRepository Instance => Lazy.Value;
 
-        private readonly ITCheckApi _api;
+        private readonly IThreeCheckApi _api;
         private const string BaseUrl = "https://xxcapp.xidian.edu.cn/";
 
-        private TCheckRepository()
+        private ThreeCheckRepository()
         {
             var options = new JsonSerializerOptions
             {
@@ -29,7 +29,7 @@ namespace AutoXduNCovReport.Repository
                 ContentSerializer = new SystemTextJsonContentSerializer(options)
             };
 
-            _api = RestService.For<ITCheckApi>(BaseUrl, settings);
+            _api = RestService.For<IThreeCheckApi>(BaseUrl, settings);
         }
 
         /// <summary>
@@ -40,9 +40,9 @@ namespace AutoXduNCovReport.Repository
         /// <returns>A task represents the result, which wraps a tuple whose first element is the flag that indicates the status and second is the error message.</returns>
         public async Task<Tuple<bool, string>> Login(string username, string password)
         {
-            var response = await _api.Login(new Model.UserInfo(username, password));
+            var (code, _, message) = await _api.Login(new Model.UserInfo(username, password));
 
-            return new Tuple<bool, string>(response.Code == 0, response.Message);
+            return new Tuple<bool, string>(code == 0, message);
         }
 
         /// <summary>

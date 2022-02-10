@@ -44,9 +44,9 @@ namespace AutoXduNCovReport.Repository
         /// <returns>A task represents the result, which wraps a tuple whose first element is the flag that indicates the status and second is the error message.</returns>
         public async Task<Tuple<bool, string>> Login(string username, string password)
         {
-            var response = await _api.Login(new Model.UserInfo(username, password));
+            var (code, _, message) = await _api.Login(new Model.UserInfo(username, password));
 
-            return new Tuple<bool, string>(response.Code == 0, response.Message);
+            return new Tuple<bool, string>(code == 0, message);
         }
 
         /// <summary>
@@ -57,7 +57,7 @@ namespace AutoXduNCovReport.Repository
         {
             var rawData = await _api.GetOldInfo();
             // Find the old information
-            var match = Regex.Match(rawData, "oldInfo: (.*),");
+            var match = Regex.Match(rawData, "var def = (.*?);");
             if (!match.Success)
                 return null;
 

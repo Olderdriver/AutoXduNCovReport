@@ -20,14 +20,14 @@ namespace AutoXduNCovReport
             });
         }
 
-        [Command("ncov", Description = "Submit your ncov information (a.k.a '疫情通')")]
+        [Command("ncov", Description = "Submit your ncov information (a.k.a '健康卡')")]
         public async Task<int> NCov(
             [Option('u', Description = "Specify your student id number")]
             string username,
             [Option('p', Description = "Specify your password")]
             string password,
-            [Option('k', Description = "Specify your Serverchan key")]
-            string sckey = "")
+            [Option("token", new[] {'k'}, Description = "Specify your PushPlus token")]
+            string pushPlusToken = "")
         {
             try
             {
@@ -39,8 +39,8 @@ namespace AutoXduNCovReport
                     Console.WriteLine($"Failed to login ({loginErrMsg}). Check your username and password.\n" +
                                       "If you are sure that your credential is correct, contact the author for help.");
                     Console.ResetColor();
-                    await SendNotification(sckey, "疫情通填写失败",
-                        $"无法登录疫情通系统: {loginErrMsg}。请检查用户名和密码。如果确认信息正确，请联系作者。");
+                    await SendNotification(pushPlusToken, "健康卡填写失败",
+                        $"无法登录健康卡系统: {loginErrMsg}。请检查用户名和密码。如果确认信息正确，请联系作者。");
                     return (int) ExitCode.InvalidCredential;
                 }
 
@@ -61,7 +61,7 @@ namespace AutoXduNCovReport
                     Console.WriteLine(
                         "Failed to parse your information submitted before. Contact the author for help.");
                     Console.ResetColor();
-                    await SendNotification(sckey, "疫情通填写失败", "无法解析前一日所填信息。请联系作者。");
+                    await SendNotification(pushPlusToken, "健康卡填写失败", "无法解析前一日所填信息。请联系作者。");
                     return (int) ExitCode.ParseUnsuccessfully;
                 }
 
@@ -82,7 +82,15 @@ namespace AutoXduNCovReport
                 if (!oldInfo.ContainsKey("zgfxdq"))
                     oldInfo.Add("zgfxdq", "0");
                 // Parse the geolocation info submitted before
-                var geolocationInfo = JsonDocument.Parse(oldInfo["geo_api_info"].ToString()).RootElement;
+                var oldGeolocationInfo = oldInfo["geo_api_info"].ToString();
+                if (oldGeolocationInfo == null)
+                {
+                    Console.WriteLine("Failed to fetch previous geolocation information.Contact the author for help.");
+                    await SendNotification(pushPlusToken, "健康卡填写失败", "无法获取之前填写的位置信息。请联系作者。");
+                    return (int) ExitCode.Exception;
+                }
+
+                var geolocationInfo = JsonDocument.Parse(oldGeolocationInfo).RootElement;
                 var province = geolocationInfo.GetProperty("addressComponent").GetProperty("province").GetString();
                 var city = geolocationInfo.GetProperty("addressComponent").GetProperty("city").GetString();
                 var area =
@@ -110,47 +118,47 @@ namespace AutoXduNCovReport
                     Console.ForegroundColor = ConsoleColor.Red;
                     Console.WriteLine($"Submitted unsuccessfully: {submitErrMsg}\n" +
                                       "Contact the author for help.");
-                    await SendNotification(sckey, "疫情通填写失败", $"信息提交失败: {submitErrMsg}。请联系作者。");
+                    await SendNotification(pushPlusToken, "健康卡填写失败", $"信息提交失败: {submitErrMsg}。请联系作者。");
                     return (int) ExitCode.Exception;
                 }
             }
             catch (Exception e)
             {
                 Console.WriteLine(e);
-                await SendNotification(sckey, "自动疫情通运行失败", "请自行检查填写状态。有关运行失败的信息，请联系作者。");
+                await SendNotification(pushPlusToken, "自动健康卡运行失败", "请自行检查填写状态。有关运行失败的信息，请联系作者。");
             }
 
             return (int) ExitCode.Exception;
         }
 
         [Command("tcheck", Description = "Submit your tcheck information (a.k.a '晨午晚检')")]
-        public async Task<int> TCheck(
+        public async Task<int> ThreeCheck(
             [Option('u', Description = "Specify your student id number")]
             string username,
             [Option('p', Description = "Specify your password")]
             string password,
             [Option('c', Description = "Specify your campus, N or S is acceptable")]
             char campus,
-            [Option('k', Description = "Specify your Serverchan key")]
-            string sckey = "")
+            [Option("token", new[] {'k'}, Description = "Specify your PushPlus token")]
+            string pushPlusToken = "")
         {
             try
             {
                 Console.WriteLine("- Logging in...");
-                var (loginSuccessfully, loginErrMsg) = await TCheckRepository.Instance.Login(username, password);
+                var (loginSuccessfully, loginErrMsg) = await ThreeCheckRepository.Instance.Login(username, password);
                 if (!loginSuccessfully)
                 {
                     Console.ForegroundColor = ConsoleColor.Red;
                     Console.WriteLine($"Failed to login ({loginErrMsg}). Check your username and password.\n" +
                                       "If you are sure that your credential is correct, contact the author for help.");
                     Console.ResetColor();
-                    await SendNotification(sckey, "晨午晚检填写失败",
+                    await SendNotification(pushPlusToken, "晨午晚检填写失败",
                         $"无法登录晨午晚检系统: {loginErrMsg}。请检查用户名和密码。如果确认信息正确，请联系作者。");
                     return (int) ExitCode.InvalidCredential;
                 }
 
                 Console.WriteLine("- Checking...");
-                var isReported = await TCheckRepository.Instance.CheckIsReported();
+                var isReported = await ThreeCheckRepository.Instance.CheckIsReported();
                 if (isReported)
                 {
                     Console.ForegroundColor = ConsoleColor.Green;
@@ -160,13 +168,14 @@ namespace AutoXduNCovReport
                 }
 
                 // Build new information
-                var address = char.ToLower(campus) == 'n'
+                var isNorthCampus = char.ToLower(campus) == 'n';
+                var address = isNorthCampus
                     ? "陕西省西安市雁塔区电子城街道西安电子科技大学北校区"
                     : "陕西省西安市长安区兴隆街道西太一级公路西安电子科技大学长安校区";
-                var geoApiInfo = char.ToLower(campus) == 'n'
+                var geoApiInfo = isNorthCampus
                     ? "{\"type\":\"complete\",\"info\":\"SUCCESS\",\"status\":1,\"position\":{\"Q\":34.23254,\"R\":108.91516000000001,\"lng\":108.91800,\"lat\":34.23230},\"message\":\"Get ipLocation success.Get address success.\",\"location_type\":\"ip\",\"accuracy\":null,\"isConverted\":true,\"addressComponent\":{\"citycode\":\"029\",\"adcode\":\"610113\",\"businessAreas\":[],\"neighborhoodType\":\"\",\"neighborhood\":\"\",\"building\":\"\",\"buildingType\":\"\",\"street\":\"白沙路\",\"streetNumber\":\"付8号\",\"country\":\"中国\",\"province\":\"陕西省\",\"city\":\"西安市\",\"district\":\"雁塔区\",\"township\":\"电子城街道\"},\"formattedAddress\":\"陕西省西安市雁塔区电子城街道西安电子科技大学北校区\",\"roads\":[],\"crosses\":[],\"pois\":[]}"
                     : "{\"type\":\"complete\",\"position\":{\"Q\":34.131035970053,\"R\":108.83058024088598,\"lng\":108.83058,\"lat\":34.131036},\"location_type\":\"html5\",\"message\":\"Get geolocation success.Convert Success.Get address success.\",\"accuracy\":220,\"isConverted\":true,\"status\":1,\"addressComponent\":{\"citycode\":\"029\",\"adcode\":\"610116\",\"businessAreas\":[],\"neighborhoodType\":\"\",\"neighborhood\":\"\",\"building\":\"\",\"buildingType\":\"\",\"street\":\"雷甘路\",\"streetNumber\":\"266#\",\"country\":\"中国\",\"province\":\"陕西省\",\"city\":\"西安市\",\"district\":\"长安区\",\"township\":\"兴隆街道\"},\"formattedAddress\":\"陕西省西安市长安区兴隆街道西太一级公路西安电子科技大学长安校区\",\"roads\":[],\"crosses\":[],\"pois\":[],\"info\":\"SUCCESS\"}";
-                var area = char.ToLower(campus) == 'n'
+                var area = isNorthCampus
                     ? "陕西省 西安市 雁塔区"
                     : "陕西省 西安市 长安区";
                 var submitParams = new Dictionary<string, string>
@@ -188,7 +197,7 @@ namespace AutoXduNCovReport
                 };
                 // Submit
                 Console.WriteLine("- Submitting...");
-                var (successful, errMsg) = await TCheckRepository.Instance.Submit(submitParams);
+                var (successful, errMsg) = await ThreeCheckRepository.Instance.Submit(submitParams);
                 if (successful)
                 {
                     Console.ForegroundColor = ConsoleColor.Green;
@@ -201,7 +210,7 @@ namespace AutoXduNCovReport
                     Console.ForegroundColor = ConsoleColor.Red;
                     Console.WriteLine($"Submitted unsuccessfully: {errMsg}\n" +
                                       "Contact the author for help.");
-                    await SendNotification(sckey, "晨午晚检填写失败", $"信息提交失败: {errMsg}。请联系作者。");
+                    await SendNotification(pushPlusToken, "晨午晚检填写失败", $"信息提交失败: {errMsg}。请联系作者。");
                     Console.ResetColor();
                     return (int) ExitCode.Exception;
                 }
@@ -209,7 +218,7 @@ namespace AutoXduNCovReport
             catch (Exception e)
             {
                 Console.WriteLine(e);
-                await SendNotification(sckey, "自动晨午晚检运行失败", "请自行检查填写状态。有关运行失败的信息，请联系作者。");
+                await SendNotification(pushPlusToken, "自动晨午晚检运行失败", "请自行检查填写状态。有关运行失败的信息，请联系作者。");
             }
 
             return (int) ExitCode.Exception;
@@ -220,7 +229,7 @@ namespace AutoXduNCovReport
             if (sckey == "")
                 return;
 
-            await ServerchanRepository.Instance.SendMessage(sckey, title, content);
+            await PushPlusRepository.Instance.SendMessage(sckey, title, content);
         }
     }
 }
